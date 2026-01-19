@@ -17,9 +17,8 @@ Bucketdrop is a simple macOS menubar app for uploading files to S3-compatible st
 
 ## Installation
 
-1. Download the latest release from the [Releases](https://github.com/fayazara/BucketDrop/releases) page
-2. Move `BucketDrop.app` to your Applications folder
-3. Open the app - it will appear in your menubar
+1. Move `BucketDrop.app` to your Applications folder
+2. Open the app - it will appear in your menubar
 
 ## Setup
 
