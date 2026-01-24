@@ -18,7 +18,7 @@ class PopoverBackgroundView: NSView {
 }
 
 // MARK: - Drop Target Status Bar Button
-class DropTargetStatusBarButton: NSView, NSDraggingDestination {
+class DropTargetStatusBarButton: NSView {
     var onFilesDropped: (([URL]) -> Void)?
     var onClick: (() -> Void)?
     private var isHighlighted = false
