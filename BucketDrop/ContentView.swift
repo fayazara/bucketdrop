@@ -327,12 +327,17 @@ struct ContentView: View {
     }
     
     private func copyToClipboard(_ object: S3Object) {
-        let url = buildURL(for: object)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(url, forType: .string)
+        Task {
+            let url = await S3Service.shared.getObjectURL(key: object.key)
+            await MainActor.run {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(url, forType: .string)
+            }
+        }
     }
-    
+
     private func buildURL(for object: S3Object) -> String {
+        // For synchronous contexts like preview URLs, use public URL format
         let encodedKey = awsURLEncodePath(object.key)
         if !settings.publicUrlBase.isEmpty {
             let base = settings.publicUrlBase.hasSuffix("/") ? String(settings.publicUrlBase.dropLast()) : settings.publicUrlBase

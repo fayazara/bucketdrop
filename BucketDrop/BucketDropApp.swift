@@ -40,37 +40,38 @@ struct BucketDropApp: App {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var statusItem: NSStatusItem?
     var popover: NSPopover?
     var modelContainer: ModelContainer?
     var settingsWindow: NSWindow?
     var popoverBackgroundView: PopoverBackgroundView?
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon
         NSApp.setActivationPolicy(.accessory)
-        
+
         // Setup model container
         let schema = Schema([UploadedFile.self])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         modelContainer = try? ModelContainer(for: schema, configurations: [modelConfiguration])
-        
+
         // Setup status bar item
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        
+
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "BucketDrop")
             button.action = #selector(togglePopover)
             button.target = self
         }
-        
+
         // Setup popover
         popover = NSPopover()
-        popover?.contentSize = NSSize(width: 320, height: 400)
+        popover?.contentSize = NSSize(width: 320, height: 460)
         popover?.behavior = .semitransient
         popover?.animates = true
-        
+        popover?.delegate = self
+
         let contentView = ContentView()
             .modelContainer(modelContainer!)
             .environment(\.openSettingsAction, OpenSettingsAction { [weak self] in
@@ -78,28 +79,35 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             })
         popover?.contentViewController = NSHostingController(rootView: contentView)
     }
-    
+
     @objc func togglePopover() {
         guard let popover = popover, let button = statusItem?.button else { return }
-        
+
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // Clean up any existing background view before showing
+            popoverBackgroundView?.removeFromSuperview()
+            popoverBackgroundView = nil
+
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
-            
+
             // Add solid white background to popover (including the arrow/notch)
             if let contentView = popover.contentViewController?.view,
                let frameView = contentView.window?.contentView?.superview {
-                // Check if background view already exists
-                if popoverBackgroundView == nil || popoverBackgroundView?.superview == nil {
-                    let bgView = PopoverBackgroundView(frame: frameView.bounds)
-                    bgView.autoresizingMask = [.width, .height]
-                    frameView.addSubview(bgView, positioned: .below, relativeTo: frameView)
-                    popoverBackgroundView = bgView
-                }
+                let bgView = PopoverBackgroundView(frame: frameView.bounds)
+                bgView.autoresizingMask = [.width, .height]
+                frameView.addSubview(bgView, positioned: .below, relativeTo: frameView)
+                popoverBackgroundView = bgView
             }
         }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        // Clean up background view when popover closes
+        popoverBackgroundView?.removeFromSuperview()
+        popoverBackgroundView = nil
     }
     
     func openSettings() {
