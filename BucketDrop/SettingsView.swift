@@ -72,12 +72,12 @@ struct SettingsView: View {
                         testConnection()
                     }
                     .disabled(isTesting || accessKeyId.isEmpty || secretAccessKey.isEmpty || bucket.isEmpty)
-                    
+
                     if isTesting {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    
+
                     if let result = testResult {
                         switch result {
                         case .success:
@@ -90,9 +90,14 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 HStack {
+                    Button("Quit") {
+                        NSApp.terminate(nil)
+                    }
+
                     Spacer()
+
                     Button("Save") {
                         saveSettings()
                     }
@@ -100,7 +105,7 @@ struct SettingsView: View {
                     .disabled(accessKeyId.isEmpty || secretAccessKey.isEmpty || bucket.isEmpty)
                 }
             }
-            
+
             Section {
                 HStack {
                     AsyncImage(url: URL(string: "https://github.com/fayazara.png")) { image in
@@ -133,16 +138,10 @@ struct SettingsView: View {
                     Spacer()
                 }
             }
-
-            Section {
-                Button("Quit BucketDrop") {
-                    NSApp.terminate(nil)
-                }
-                .foregroundStyle(.red)
-            }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 600)
+        .frame(width: 450)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loadSettings()
         }

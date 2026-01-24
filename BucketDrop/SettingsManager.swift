@@ -122,7 +122,7 @@ final class SettingsManager {
     // MARK: - Keychain
     
     private func setKeychainItem(key: String, value: String) {
-        let data = value.data(using: .utf8)!
+        guard let data = value.data(using: .utf8) else { return }
 
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

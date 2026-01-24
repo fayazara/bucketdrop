@@ -17,6 +17,80 @@ class PopoverBackgroundView: NSView {
     }
 }
 
+// MARK: - Drop Target Status Bar Button
+class DropTargetStatusBarButton: NSView, NSDraggingDestination {
+    var onFilesDropped: (([URL]) -> Void)?
+    var onClick: (() -> Void)?
+    private var isHighlighted = false
+    private let imageView = NSImageView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        setupView()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupView()
+    }
+
+    private func setupView() {
+        wantsLayer = true
+        layer?.cornerRadius = 4
+
+        imageView.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "BucketDrop")
+        imageView.contentTintColor = .controlTextColor
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            imageView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 18),
+            imageView.heightAnchor.constraint(equalToConstant: 18)
+        ])
+
+        registerForDraggedTypes([.fileURL])
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onClick?()
+    }
+
+    // MARK: - NSDraggingDestination
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        isHighlighted = true
+        layer?.backgroundColor = NSColor.controlAccentColor.cgColor
+        imageView.contentTintColor = .white
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        isHighlighted = false
+        layer?.backgroundColor = nil
+        imageView.contentTintColor = .controlTextColor
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        isHighlighted = false
+        layer?.backgroundColor = nil
+        imageView.contentTintColor = .controlTextColor
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let pasteboard = sender.draggingPasteboard
+        guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) as? [URL], !urls.isEmpty else {
+            return false
+        }
+
+        onFilesDropped?(urls)
+        return true
+    }
+}
+
 @main
 struct BucketDropApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -46,6 +120,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var modelContainer: ModelContainer?
     var settingsWindow: NSWindow?
     var popoverBackgroundView: PopoverBackgroundView?
+    var dropTargetView: DropTargetStatusBarButton?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Hide dock icon
@@ -56,13 +131,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         modelContainer = try? ModelContainer(for: schema, configurations: [modelConfiguration])
 
-        // Setup status bar item
+        // Setup status bar item with custom drop target view
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "square.and.arrow.up", accessibilityDescription: "BucketDrop")
-            button.action = #selector(togglePopover)
-            button.target = self
+            let dropView = DropTargetStatusBarButton(frame: NSRect(x: 0, y: 0, width: 24, height: 22))
+            dropView.onClick = { [weak self] in
+                self?.togglePopover()
+            }
+            dropView.onFilesDropped = { [weak self] urls in
+                self?.handleDroppedFiles(urls)
+            }
+            button.addSubview(dropView)
+            dropView.translatesAutoresizingMaskIntoConstraints = false
+            NSLayoutConstraint.activate([
+                dropView.leadingAnchor.constraint(equalTo: button.leadingAnchor),
+                dropView.trailingAnchor.constraint(equalTo: button.trailingAnchor),
+                dropView.topAnchor.constraint(equalTo: button.topAnchor),
+                dropView.bottomAnchor.constraint(equalTo: button.bottomAnchor)
+            ])
+            dropTargetView = dropView
         }
 
         // Setup popover
@@ -80,7 +168,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover?.contentViewController = NSHostingController(rootView: contentView)
     }
 
-    @objc func togglePopover() {
+    private func handleDroppedFiles(_ urls: [URL]) {
+        // Open popover and trigger upload
+        if let button = statusItem?.button, let popover = popover {
+            if !popover.isShown {
+                popoverBackgroundView?.removeFromSuperview()
+                popoverBackgroundView = nil
+
+                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+                popover.contentViewController?.view.window?.makeKey()
+
+                if let contentView = popover.contentViewController?.view,
+                   let frameView = contentView.window?.contentView?.superview {
+                    let bgView = PopoverBackgroundView(frame: frameView.bounds)
+                    bgView.autoresizingMask = [.width, .height]
+                    frameView.addSubview(bgView, positioned: .below, relativeTo: frameView)
+                    popoverBackgroundView = bgView
+                }
+            }
+        }
+
+        // Post notification for ContentView to handle the upload
+        NotificationCenter.default.post(name: .filesDroppedOnStatusBar, object: nil, userInfo: ["urls": urls])
+    }
+
+    func togglePopover() {
         guard let popover = popover, let button = statusItem?.button else { return }
 
         if popover.isShown {
@@ -164,4 +276,9 @@ extension EnvironmentValues {
         get { self[OpenSettingsActionKey.self] }
         set { self[OpenSettingsActionKey.self] = newValue }
     }
+}
+
+// MARK: - Notification Names
+extension Notification.Name {
+    static let filesDroppedOnStatusBar = Notification.Name("filesDroppedOnStatusBar")
 }

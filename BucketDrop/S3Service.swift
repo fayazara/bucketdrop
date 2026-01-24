@@ -375,14 +375,15 @@ actor S3Service {
         let service = "s3"
 
         let now = Date()
-        let dateFormatter = ISO8601DateFormatter()
-        dateFormatter.formatOptions = [.withYear, .withMonth, .withDay, .withTime, .withTimeZone]
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
         dateFormatter.timeZone = TimeZone(identifier: "UTC")
-
         let amzDate = dateFormatter.string(from: now)
-            .replacingOccurrences(of: "-", with: "")
-            .replacingOccurrences(of: ":", with: "")
-        let dateStamp = String(amzDate.prefix(8))
+
+        let dateStampFormatter = DateFormatter()
+        dateStampFormatter.dateFormat = "yyyyMMdd"
+        dateStampFormatter.timeZone = TimeZone(identifier: "UTC")
+        let dateStamp = dateStampFormatter.string(from: now)
 
         let host = buildHost()
         let endpoint = buildEndpoint()

@@ -200,6 +200,13 @@ struct ContentView: View {
                 await loadS3Objects()
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .filesDroppedOnStatusBar)) { notification in
+            guard let urls = notification.userInfo?["urls"] as? [URL], !urls.isEmpty else { return }
+            guard settings.isConfigured && !isUploading else { return }
+            Task { @MainActor in
+                await uploadFiles(urls)
+            }
+        }
     }
     
     private func handleDrop(_ providers: [NSItemProvider]) {
