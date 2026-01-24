@@ -23,8 +23,15 @@ actor S3Service {
         let url: String
     }
     
+    // MARK: - URL Generation
+
+    /// Generates the appropriate URL for an object (public or presigned based on settings)
+    func getObjectURL(key: String) -> String {
+        return buildPublicURL(key: key)
+    }
+
     // MARK: - Upload
-    
+
     func upload(fileURL: URL, progress: ((Double) -> Void)? = nil) async throws -> UploadResult {
         guard settings.isConfigured else {
             throw S3Error(message: "S3 not configured. Please add credentials in settings.")
@@ -246,16 +253,21 @@ actor S3Service {
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.httpBody = data
-        
+
+        // Build headers - skip ACL for private buckets
+        var uploadHeaders: [String: String] = [
+            "host": host,
+            "content-type": contentType
+        ]
+        if !settings.isPrivateBucket {
+            uploadHeaders["x-amz-acl"] = "public-read"
+        }
+
         let headers = try signRequest(
             method: "PUT",
             path: signingPath,
             query: "",
-            headers: [
-                "host": host,
-                "content-type": contentType,
-                "x-amz-acl": "public-read"
-            ],
+            headers: uploadHeaders,
             payload: data
         )
         
@@ -339,14 +351,102 @@ actor S3Service {
     }
     
     private func buildPublicURL(key: String) -> String {
+        // If private bucket, generate presigned URL
+        if settings.isPrivateBucket {
+            return generatePresignedURL(key: key, expiration: Int(settings.presignedUrlExpiration))
+        }
+
         let encodedKey = awsURLEncodePath(key)
-        
+
         if !settings.publicUrlBase.isEmpty {
             let base = settings.publicUrlBase.hasSuffix("/") ? String(settings.publicUrlBase.dropLast()) : settings.publicUrlBase
             return "\(base)/\(encodedKey)"
         }
-        
+
         return "\(buildEndpoint())/\(encodedKey)"
+    }
+
+    // MARK: - Presigned URL Generation
+
+    private func generatePresignedURL(key: String, expiration: Int) -> String {
+        let accessKey = settings.accessKeyId
+        let secretKey = settings.secretAccessKey
+        let region = settings.region
+        let service = "s3"
+
+        let now = Date()
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
+        dateFormatter.timeZone = TimeZone(identifier: "UTC")
+        let amzDate = dateFormatter.string(from: now)
+
+        let dateStampFormatter = DateFormatter()
+        dateStampFormatter.dateFormat = "yyyyMMdd"
+        dateStampFormatter.timeZone = TimeZone(identifier: "UTC")
+        let dateStamp = dateStampFormatter.string(from: now)
+
+        let host = buildHost()
+        let endpoint = buildEndpoint()
+        let encodedKey = awsURLEncodePath(key)
+        let signingPath = buildSigningPath(objectKey: key)
+
+        // Build credential scope
+        let credentialScope = "\(dateStamp)/\(region)/\(service)/aws4_request"
+        let credential = "\(accessKey)/\(credentialScope)"
+
+        // Build canonical query string (alphabetically sorted)
+        let queryParams: [(String, String)] = [
+            ("X-Amz-Algorithm", "AWS4-HMAC-SHA256"),
+            ("X-Amz-Credential", credential),
+            ("X-Amz-Date", amzDate),
+            ("X-Amz-Expires", "\(expiration)"),
+            ("X-Amz-SignedHeaders", "host")
+        ]
+
+        let canonicalQueryString = queryParams
+            .map { "\(awsQueryEncode($0.0))=\(awsQueryEncode($0.1))" }
+            .joined(separator: "&")
+
+        // Build canonical headers
+        let canonicalHeaders = "host:\(host)\n"
+        let signedHeaders = "host"
+
+        // Build canonical request
+        let canonicalRequest = [
+            "GET",
+            signingPath,
+            canonicalQueryString,
+            canonicalHeaders,
+            signedHeaders,
+            "UNSIGNED-PAYLOAD"
+        ].joined(separator: "\n")
+
+        let canonicalRequestHash = SHA256.hash(data: Data(canonicalRequest.utf8)).hexString
+
+        // Build string to sign
+        let stringToSign = [
+            "AWS4-HMAC-SHA256",
+            amzDate,
+            credentialScope,
+            canonicalRequestHash
+        ].joined(separator: "\n")
+
+        // Calculate signature
+        let kDate = hmacSHA256(key: Data("AWS4\(secretKey)".utf8), data: Data(dateStamp.utf8))
+        let kRegion = hmacSHA256(key: kDate, data: Data(region.utf8))
+        let kService = hmacSHA256(key: kRegion, data: Data(service.utf8))
+        let kSigning = hmacSHA256(key: kService, data: Data("aws4_request".utf8))
+        let signature = hmacSHA256(key: kSigning, data: Data(stringToSign.utf8)).hexString
+
+        // Build final URL
+        let finalQueryString = "\(canonicalQueryString)&X-Amz-Signature=\(signature)"
+        return "\(endpoint)/\(encodedKey)?\(finalQueryString)"
+    }
+
+    private func awsQueryEncode(_ string: String) -> String {
+        // AWS requires specific encoding for query parameters
+        let unreserved = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.~")
+        return string.addingPercentEncoding(withAllowedCharacters: unreserved) ?? string
     }
     
     // MARK: - AWS Signature V4

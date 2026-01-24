@@ -16,7 +16,9 @@ struct SettingsView: View {
     @State private var region: String = ""
     @State private var endpoint: String = ""
     @State private var publicUrlBase: String = ""
-    
+    @State private var isPrivateBucket: Bool = false
+    @State private var presignedUrlExpiration: TimeInterval = 3600
+
     @State private var isTesting = false
     @State private var testResult: TestResult?
     
@@ -44,19 +46,38 @@ struct SettingsView: View {
             } footer: {
                 Text("For Cloudflare R2: paste the S3 API endpoint URL and set region to 'auto'. Public URL Base is your custom domain for accessing files.")
             }
-            
+
+            Section {
+                Toggle("Private bucket", isOn: $isPrivateBucket)
+
+                if isPrivateBucket {
+                    Picker("Link expiration", selection: $presignedUrlExpiration) {
+                        Text("1 hour").tag(TimeInterval(3600))
+                        Text("1 day").tag(TimeInterval(86400))
+                        Text("7 days").tag(TimeInterval(604800))
+                        Text("1 year").tag(TimeInterval(31536000))
+                    }
+                }
+            } header: {
+                Text("URL Settings")
+            } footer: {
+                Text(isPrivateBucket
+                    ? "Files will be private. Copied links will be presigned and expire after the selected time."
+                    : "Files will be publicly accessible via direct URL.")
+            }
+
             Section {
                 HStack {
                     Button("Test Connection") {
                         testConnection()
                     }
                     .disabled(isTesting || accessKeyId.isEmpty || secretAccessKey.isEmpty || bucket.isEmpty)
-                    
+
                     if isTesting {
                         ProgressView()
                             .controlSize(.small)
                     }
-                    
+
                     if let result = testResult {
                         switch result {
                         case .success:
@@ -69,9 +90,14 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 HStack {
+                    Button("Quit") {
+                        NSApp.terminate(nil)
+                    }
+
                     Spacer()
+
                     Button("Save") {
                         saveSettings()
                     }
@@ -79,7 +105,7 @@ struct SettingsView: View {
                     .disabled(accessKeyId.isEmpty || secretAccessKey.isEmpty || bucket.isEmpty)
                 }
             }
-            
+
             Section {
                 HStack {
                     AsyncImage(url: URL(string: "https://github.com/fayazara.png")) { image in
@@ -92,7 +118,7 @@ struct SettingsView: View {
                     }
                     .frame(width: 32, height: 32)
                     .clipShape(Circle())
-                    
+
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Fayaz Ahmed")
                             .font(.subheadline)
@@ -100,10 +126,10 @@ struct SettingsView: View {
                         Link("@fayazara", destination: URL(string: "https://x.com/fayazara")!)
                             .font(.caption)
                     }
-                    
+
                     Spacer()
                 }
-                
+
                 HStack {
                     Spacer()
                     Text("Made in India")
@@ -114,7 +140,8 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 450, height: 480)
+        .frame(width: 450)
+        .fixedSize(horizontal: false, vertical: true)
         .onAppear {
             loadSettings()
         }
@@ -127,6 +154,8 @@ struct SettingsView: View {
         region = settings.region
         endpoint = settings.endpoint
         publicUrlBase = settings.publicUrlBase
+        isPrivateBucket = settings.isPrivateBucket
+        presignedUrlExpiration = settings.presignedUrlExpiration
     }
     
     private func saveSettings() {
@@ -136,9 +165,11 @@ struct SettingsView: View {
         settings.region = region.isEmpty ? "us-east-1" : region
         settings.endpoint = endpoint
         settings.publicUrlBase = publicUrlBase
-        
+        settings.isPrivateBucket = isPrivateBucket
+        settings.presignedUrlExpiration = presignedUrlExpiration
+
         testResult = .success
-        
+
         // Close settings window after a short delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             NSApp.keyWindow?.close()
