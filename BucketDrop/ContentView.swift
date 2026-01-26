@@ -338,6 +338,13 @@ struct ContentView: View {
             let base = settings.publicUrlBase.hasSuffix("/") ? String(settings.publicUrlBase.dropLast()) : settings.publicUrlBase
             return "\(base)/\(encodedKey)"
         }
+
+        // Use custom endpoint if set (for DO Spaces, R2, MinIO, etc.)
+        if !settings.endpoint.isEmpty {
+            let base = settings.endpoint.hasSuffix("/") ? String(settings.endpoint.dropLast()) : settings.endpoint
+            return "\(base)/\(settings.bucket)/\(encodedKey)"
+        }
+
         return "https://\(settings.bucket).s3.\(settings.region).amazonaws.com/\(encodedKey)"
     }
 
